@@ -14,7 +14,6 @@ import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
-import android.hardware.camera2.CameraConstrainedHighSpeedCaptureSession;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
@@ -401,23 +400,39 @@ public class CaptureVideoFragment extends Fragment
             {
                 throw new RuntimeException("Time out waiting to lock camera opening.");
             }
-            String cameraId = Objects.requireNonNull(manager).getCameraIdList()[0];
+
+            String[] cameraIdList = Objects.requireNonNull(manager).getCameraIdList();
+            String cameraId = null;
+            for (String id : cameraIdList)
+            {
+                if (id == null)
+                {
+                    throw new RuntimeException("No camera available.");
+                }
+                CameraCharacteristics characteristics = manager.getCameraCharacteristics(id);
+
+                // 检查相机是否是前置摄像头
+                Integer lensFacing = characteristics.get(CameraCharacteristics.LENS_FACING);
+                if (lensFacing != null && lensFacing == CameraCharacteristics.LENS_FACING_FRONT)
+                {
+                    cameraId = id;
+                    break;
+                }
+            }
 
             CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
 
-            StreamConfigurationMap map = characteristics
-                    .get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+            StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
 
             if (map == null)
             {
-                ErrorDialog.newInstance(getString(R.string.open_failed_of_map_null))
-                        .show(getFragmentManager(), "TAG");
+                ErrorDialog.newInstance(getString(R.string.open_failed_of_map_null)).show(getFragmentManager(), "TAG");
                 return;
             }
 
-            List<Size> highSpeedSizes = new ArrayList<>();
-
-            for (Range<Integer> fpsRange : map.getHighSpeedVideoFpsRanges())
+            List<Size> normalVideoSizes = new ArrayList<>();
+            Range<Integer>[] aeFpsRanges = characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+            for (Range<Integer> fpsRange : aeFpsRanges)
             {
                 if (fpsRange.getLower().equals(fpsRange.getUpper()))
                 {
@@ -428,21 +443,49 @@ public class CaptureVideoFragment extends Fragment
                         {
                             videoSize.setFps(fpsRange.getUpper());
                             Log.d(TAG, "Support HighSpeed video recording for " + videoSize.toString());
-                            highSpeedSizes.add(videoSize);
+                            normalVideoSizes.add(videoSize);
                         }
                     }
                 }
             }
 
-            if (highSpeedSizes.isEmpty())
+            if (normalVideoSizes.isEmpty())
             {
                 ErrorDialog.newInstance(getString(R.string.open_failed_of_not_support_high_speed)).show(getFragmentManager(), "TAG");
                 return;
             }
 
-            Collections.sort(highSpeedSizes);
-            mVideoSize = highSpeedSizes.get(highSpeedSizes.size() - 1);
+            Collections.sort(normalVideoSizes);
+            mVideoSize = normalVideoSizes.get(normalVideoSizes.size() - 1);
             mPreviewSize = mVideoSize;
+
+//            List<Size> highSpeedSizes = new ArrayList<>();
+//            for (Range<Integer> fpsRange : map.getHighSpeedVideoFpsRanges())
+//            {
+//                if (fpsRange.getLower().equals(fpsRange.getUpper()))
+//                {
+//                    for (android.util.Size size : map.getHighSpeedVideoSizesFor(fpsRange))
+//                    {
+//                        Size videoSize = new Size(size.getWidth(), size.getHeight());
+//                        if (videoSize.hasHighSpeedCamcorder(CameraMetadata.LENS_FACING_FRONT))
+//                        {
+//                            videoSize.setFps(fpsRange.getUpper());
+//                            Log.d(TAG, "Support HighSpeed video recording for " + videoSize.toString());
+//                            highSpeedSizes.add(videoSize);
+//                        }
+//                    }
+//                }
+//            }
+//
+//            if (highSpeedSizes.isEmpty())
+//            {
+//                ErrorDialog.newInstance(getString(R.string.open_failed_of_not_support_high_speed)).show(getFragmentManager(), "TAG");
+//                return;
+//            }
+//
+//            Collections.sort(highSpeedSizes);
+//            mVideoSize = highSpeedSizes.get(highSpeedSizes.size() - 1);
+//            mPreviewSize = mVideoSize;
 
             mInfo.setText(getString(R.string.video_info, mVideoSize.getWidth(), mVideoSize.getHeight(), mVideoSize.getFps()));
 
@@ -572,7 +615,6 @@ public class CaptureVideoFragment extends Fragment
             e.printStackTrace();
         }
     }
-
 
     /**
      * Update the camera preview. {@link #startPreview()} needs to be called in advance.

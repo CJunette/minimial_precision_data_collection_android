@@ -41,6 +41,13 @@
         android:visibility="gone"
         tools:visibility="visible" />
 
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:id="@+id/view_overlay_button"
+        android:backgroundTint="#FFFFFF22"
+        android:elevation="5dp"/>
+
     <androidx.appcompat.widget.AppCompatCheckBox
         android:id="@+id/video_record"
         android:layout_width="120dp"
