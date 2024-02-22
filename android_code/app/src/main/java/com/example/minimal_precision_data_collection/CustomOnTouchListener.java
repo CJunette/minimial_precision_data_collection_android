@@ -11,11 +11,14 @@ import android.view.View;
 import android.view.animation.AccelerateDecelerateInterpolator;
 import android.view.animation.LinearInterpolator;
 
+import java.io.File;
+
 public class CustomOnTouchListener implements android.view.View.OnTouchListener
 {
     public android.view.GestureDetector mGestureDetector;
     public CaptureVideoFragment mCaptureVideoFragment;
     public static final Integer DURATION = 1000;
+    public String mLastFileName = "";
 
     public CustomOnTouchListener(android.content.Context context, CaptureVideoFragment captureVideoFragment)
     {
@@ -100,6 +103,37 @@ public class CustomOnTouchListener implements android.view.View.OnTouchListener
         public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY)
         {
             Log.e("GESTURE_DETECTOR", "onScroll");
+            if (distanceX > 5 && distanceY > 10 && mLastFileName.length() > 0)
+            {
+                // TODO 添加一个scroll能够返回上一个点的功能。
+                // delete the video of name mLastFileName
+                File mFileToDelete = new File(mLastFileName);
+                if (mFileToDelete.exists())
+                {
+                    if (mFileToDelete.delete())
+                    {
+                        Log.d("File Deletion", "File deleted successfully");
+                    } else
+                    {
+                        Log.e("File Deletion", "Failed to delete file");
+                    }
+                } else
+                {
+                    Log.e("File Deletion", "File does not exist");
+                }
+
+                mLastFileName = "";
+
+                View currentGazeView = mCaptureVideoFragment.mViewsForGaze.get(mCaptureVideoFragment.mIndicesForGaze.get(mCaptureVideoFragment.mGazePointIndex)).mView;
+                currentGazeView.setVisibility(View.INVISIBLE);
+                currentGazeView.invalidate();
+
+                mCaptureVideoFragment.mGazePointIndex -= 1;
+                currentGazeView = mCaptureVideoFragment.mViewsForGaze.get(mCaptureVideoFragment.mIndicesForGaze.get(mCaptureVideoFragment.mGazePointIndex)).mView;
+                currentGazeView.setVisibility(View.VISIBLE);
+
+            }
+
             return false;
         }
 
@@ -128,6 +162,7 @@ public class CustomOnTouchListener implements android.view.View.OnTouchListener
                 ColorTransition.startColorTransition(currentGazeView, Color.BLACK, Color.RED, DURATION, new ColorTransition.OnColorTransitionListener() {
                     @Override
                     public void onTransitionEnd() {
+                        mLastFileName = mCaptureVideoFragment.mNextVideoFilePath;
                         mCaptureVideoFragment.stopRecordingVideo();
 
                         currentGazeView.setBackgroundColor(Color.BLACK);
