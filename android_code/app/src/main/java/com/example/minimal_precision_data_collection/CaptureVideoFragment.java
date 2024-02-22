@@ -436,7 +436,7 @@ public class CaptureVideoFragment extends Fragment
             {
                 if (fpsRange.getLower().equals(fpsRange.getUpper()))
                 {
-                    for (android.util.Size size : map.getHighSpeedVideoSizesFor(fpsRange))
+                    for (android.util.Size size : map.getOutputSizes(MediaRecorder.class))
                     {
                         Size videoSize = new Size(size.getWidth(), size.getHeight());
                         if (videoSize.hasHighSpeedCamcorder(CameraMetadata.LENS_FACING_FRONT))
@@ -549,9 +549,7 @@ public class CaptureVideoFragment extends Fragment
             }
         }
         catch (Exception ignored)
-        {
-
-        }
+        {}
         finally
         {
             mCameraOpenCloseLock.release();
