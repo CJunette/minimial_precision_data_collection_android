@@ -15,9 +15,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Minimal_precision_data_collection"
         tools:targetApi="31">
+
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:theme="@style/AppThemeNoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

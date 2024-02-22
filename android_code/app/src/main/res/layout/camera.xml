@@ -45,7 +45,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:id="@+id/view_overlay_button"
-        android:backgroundTint="#FFFFFF22"
+        android:background="#DDFFFFFF"
         android:elevation="5dp"/>
 
     <androidx.appcompat.widget.AppCompatCheckBox

@@ -18,11 +18,14 @@ public class CustomClickListener implements android.view.View.OnClickListener
     @Override
     public void onClick(View view)
     {
-        if (view.getId() == R.id.video_record) {
-            if (mCaptureVideoFragment.mIsRecordingVideo) {
+        if (view.getId() == R.id.view_overlay_button || view.getId() == R.id.video_record)
+        {
+            if (mCaptureVideoFragment.mIsRecordingVideo)
+            {
                 mCaptureVideoFragment.stopRecordingVideo();
                 mCaptureVideoFragment.startPreview();
-            } else {
+            } else
+            {
                 mCaptureVideoFragment.startRecordingVideo();
             }
         }

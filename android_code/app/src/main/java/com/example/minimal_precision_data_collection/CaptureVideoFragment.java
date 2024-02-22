@@ -8,6 +8,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
@@ -28,6 +29,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.SystemClock;
 import android.text.TextUtils;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.Range;
 import android.util.SparseIntArray;
@@ -41,7 +43,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
-import androidx.appcompat.widget.AppCompatCheckBox;
 import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.Fragment;
 
@@ -76,6 +77,8 @@ public class CaptureVideoFragment extends Fragment
         ORIENTATIONS.append(Surface.ROTATION_180, 270);
         ORIENTATIONS.append(Surface.ROTATION_270, 180);
     }
+    public static final Integer GAZE_POINT_WIDTH = 20;
+    public static final Float GAZE_POINT_DISTANCE_CM = 0.25f;
 
     /**
      * An {@link AutoFitTextureView} for camera preview.
@@ -85,7 +88,8 @@ public class CaptureVideoFragment extends Fragment
     /**
      * Button to record video
      */
-    private AppCompatCheckBox mRecButtonVideo;
+//    private AppCompatCheckBox mRecButtonVideo;
+    private View mRecButtonVideo;
     private Chronometer mChronometer;
     private TextView mInfo;
 
@@ -107,7 +111,6 @@ public class CaptureVideoFragment extends Fragment
     private TextureView.SurfaceTextureListener mSurfaceTextureListener
             = new TextureView.SurfaceTextureListener()
     {
-
         @Override
         public void onSurfaceTextureAvailable(SurfaceTexture surfaceTexture, int width, int height)
         {
@@ -140,7 +143,7 @@ public class CaptureVideoFragment extends Fragment
 
     private Size mVideoSize;
 
-    private String mNextVideoFilePath;
+    public String mNextVideoFilePath;
     /**
      * Camera preview.
      */
@@ -171,6 +174,11 @@ public class CaptureVideoFragment extends Fragment
      * A {@link Semaphore} to prevent the app from exiting before closing the camera.
      */
     private Semaphore mCameraOpenCloseLock = new Semaphore(1);
+
+    /**
+     * mCameraCharacteristics用于确认打开的摄像头的特性。
+     */
+    CameraCharacteristics mCameraCharacteristics;
 
     /**
      * {@link CameraDevice.StateCallback} is called when {@link CameraDevice} changes its status.
@@ -216,11 +224,70 @@ public class CaptureVideoFragment extends Fragment
         return new CaptureVideoFragment();
     }
 
-    @Override
-    public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container,
-                             Bundle savedInstanceState)
+    public static class ViewAndName
     {
-        return inflater.inflate(R.layout.camera, container, false);
+        public View mView;
+        public String mName;
+
+        public ViewAndName(View view, String name)
+        {
+            mView = view;
+            mName = name;
+        }
+    }
+    public ArrayList<ViewAndName> mViewsForGaze = new ArrayList<>();
+    public ArrayList<Integer> mIndicesForGaze = new ArrayList<>();
+    public Integer mGazePointIndex = 0;
+
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState)
+    {
+        View rootView = inflater.inflate(R.layout.camera, container, false);
+
+        // 获取屏幕的分辨率及具体尺寸。
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        requireActivity().getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+
+        int screenWidthPixels = displayMetrics.widthPixels;
+        int screenHeightPixels = displayMetrics.heightPixels;
+
+        // 获取屏幕的物理尺寸（以厘米为单位）
+        DisplayMetrics realMetrics = new DisplayMetrics();
+        requireActivity().getWindowManager().getDefaultDisplay().getRealMetrics(realMetrics);
+
+        float screenWidthCms = screenWidthPixels / realMetrics.xdpi * 2.54f;
+        float screenHeightCms = screenHeightPixels / realMetrics.ydpi * 2.54f;
+
+        int width_gaze_num = (int) (screenWidthCms / 2 / GAZE_POINT_DISTANCE_CM) - 1;
+        int height_gaze_num = (int) (screenHeightCms / 2 / GAZE_POINT_DISTANCE_CM) - 1;
+
+        for (int i = 0; i < width_gaze_num * 2 + 1; i++)
+        {
+            for (int j = 0; j < height_gaze_num * 2 + 1; j++)
+            {
+                View gazePoint = new View(requireActivity());
+                gazePoint.setLayoutParams(new ViewGroup.LayoutParams(GAZE_POINT_WIDTH, GAZE_POINT_WIDTH));
+                gazePoint.setBackgroundColor(Color.BLACK);
+                gazePoint.setX(screenWidthPixels / 2f + (i - width_gaze_num) * GAZE_POINT_DISTANCE_CM / 2.54f * realMetrics.xdpi - GAZE_POINT_WIDTH / 2);
+                gazePoint.setY(screenHeightPixels / 2f + (j - height_gaze_num) * GAZE_POINT_DISTANCE_CM / 2.54f * realMetrics.ydpi - GAZE_POINT_WIDTH / 2);
+                ViewAndName viewAndName = new ViewAndName(gazePoint, String.format("gazePoint_%d_%d", i-width_gaze_num, j-height_gaze_num));
+                mViewsForGaze.add(viewAndName);
+                gazePoint.setElevation(100);
+                gazePoint.setOutlineProvider(null);
+                gazePoint.setVisibility(View.INVISIBLE);
+                ((ViewGroup) rootView).addView(gazePoint);
+            }
+        }
+
+        for (int i = 0; i < mViewsForGaze.size(); i++)
+        {
+            mIndicesForGaze.add(i);
+        }
+        Collections.shuffle(mIndicesForGaze);
+
+        mViewsForGaze.get(mIndicesForGaze.get(mGazePointIndex)).mView.setVisibility(View.VISIBLE);
+
+        return rootView;
     }
 
     @Override
@@ -229,8 +296,9 @@ public class CaptureVideoFragment extends Fragment
         mTextureView = view.findViewById(R.id.texture);
         mChronometer = view.findViewById(R.id.chronometer);
         mInfo = view.findViewById(R.id.info);
-        mRecButtonVideo = view.findViewById(R.id.video_record);
-        mRecButtonVideo.setOnClickListener(new CustomClickListener(this));
+        mRecButtonVideo = view.findViewById(R.id.view_overlay_button);
+//        mRecButtonVideo.setOnClickListener(new CustomClickListener(this));
+        mRecButtonVideo.setOnTouchListener(new CustomOnTouchListener(requireContext(), this));
     }
 
     @Override
@@ -241,6 +309,12 @@ public class CaptureVideoFragment extends Fragment
         startBackgroundThread();
         if (mTextureView.isAvailable())
         {
+//            DisplayMetrics displayMetrics = new DisplayMetrics();
+//            requireActivity().getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+//
+//            int screenWidth = displayMetrics.widthPixels;
+//            int screenHeight = displayMetrics.heightPixels;
+//
             openCamera(mTextureView.getWidth(), mTextureView.getHeight());
         }
         else
@@ -420,9 +494,9 @@ public class CaptureVideoFragment extends Fragment
                 }
             }
 
-            CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
+            mCameraCharacteristics = manager.getCameraCharacteristics(cameraId);
 
-            StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+            StreamConfigurationMap map = mCameraCharacteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
 
             if (map == null)
             {
@@ -431,7 +505,7 @@ public class CaptureVideoFragment extends Fragment
             }
 
             List<Size> normalVideoSizes = new ArrayList<>();
-            Range<Integer>[] aeFpsRanges = characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+            Range<Integer>[] aeFpsRanges = mCameraCharacteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
             for (Range<Integer> fpsRange : aeFpsRanges)
             {
                 if (fpsRange.getLower().equals(fpsRange.getUpper()))
@@ -493,9 +567,11 @@ public class CaptureVideoFragment extends Fragment
             if (orientation == Configuration.ORIENTATION_LANDSCAPE)
             {
                 mTextureView.setAspectRatio(mPreviewSize.getWidth(), mPreviewSize.getHeight());
+//                mTextureView.setAspectRatio(height, width);
             } else
             {
                 mTextureView.setAspectRatio(mPreviewSize.getHeight(), mPreviewSize.getWidth());
+//                mTextureView.setAspectRatio(width, height);
             }
             configureTransform(width, height);
             mMediaRecorder = new MediaRecorder();
@@ -561,6 +637,7 @@ public class CaptureVideoFragment extends Fragment
      */
     public void startPreview()
     {
+//        Log.e("START_PREVIEW", String.format("%d, %d", mTextureView.getWidth(), mTextureView.getHeight()));
         if (null == mCameraDevice || !mTextureView.isAvailable() || null == mPreviewSize)
         {
             return;
@@ -589,7 +666,6 @@ public class CaptureVideoFragment extends Fragment
 
             mCameraDevice.createCaptureSession(surfaces, new CameraCaptureSession.StateCallback()
             {
-
                 @Override
                 public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession)
                 {
@@ -688,6 +764,15 @@ public class CaptureVideoFragment extends Fragment
 
         int rotation = activity.getWindowManager().getDefaultDisplay().getRotation();
         int orientation = ORIENTATIONS.get(rotation);
+
+        // 对于前置摄像头，需要额外检查镜像和旋转
+        CameraCharacteristics characteristics = mCameraCharacteristics;
+        Integer frontFacing = characteristics.get(CameraCharacteristics.LENS_FACING);
+        if (frontFacing != null && frontFacing == CameraCharacteristics.LENS_FACING_FRONT) {
+            int sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+            orientation = (orientation + sensorOrientation + 270) % 360;
+        }
+
         mMediaRecorder.setOrientationHint(orientation);
         mMediaRecorder.prepare();
     }
@@ -697,16 +782,18 @@ public class CaptureVideoFragment extends Fragment
      *
      * @return path + filename
      */
-    private String getVideoFile() {
+    public String getVideoFile() {
 
-        final File dcimFile = Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_DCIM);
-        final File camera2VideoImage = new File(dcimFile, "HighSpeedVideo");
+        final File dcimFile = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM);
+        final File camera2VideoImage = new File(dcimFile, "minimal_precision_data_collection");
         if (!camera2VideoImage.exists()) {
             camera2VideoImage.mkdirs();
         }
-        return camera2VideoImage.getAbsolutePath() + "/HIGH_SPEED_VIDEO_" + System.currentTimeMillis()
-                + ".mp4";
+        return String.format("%s/%s_%d.mp4",
+                camera2VideoImage.getAbsolutePath(),
+                mViewsForGaze.get(mIndicesForGaze.get(mGazePointIndex)).mName,
+                System.currentTimeMillis());
+
     }
 
     /**
@@ -722,7 +809,7 @@ public class CaptureVideoFragment extends Fragment
     public void startRecordingVideo() {
 
         mIsRecordingVideo = true;
-        mRecButtonVideo.setText(R.string.stop);
+//        mRecButtonVideo.setText(R.string.stop);
         mMediaRecorder.start();
         mChronometer.setBase(SystemClock.elapsedRealtime());
         mChronometer.start();
@@ -730,9 +817,7 @@ public class CaptureVideoFragment extends Fragment
     }
 
     public void stopRecordingVideo() {
-        // UI
-        mIsRecordingVideo = false;
-        mRecButtonVideo.setText(R.string.start);
+//        mRecButtonVideo.setText(R.string.start);
         mChronometer.stop();
         mChronometer.setVisibility(View.GONE);
         // Stop recording
@@ -746,6 +831,8 @@ public class CaptureVideoFragment extends Fragment
         Log.e(TAG, "stopRecordingVideo: [saved] = " + mNextVideoFilePath);
 
         addToMediaStore();
+        // UI
+        mIsRecordingVideo = false;
     }
 
 
